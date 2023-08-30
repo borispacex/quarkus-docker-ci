@@ -1,0 +1,18 @@
+version: "3.6"
+services: 
+  mysql:
+    image: mysql:8
+    container_name: db-mysql
+    volumes:
+      - /home/borisv/storage/db-mysql:/var/lib/mysql
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: dbmonster
+  nginx:
+    image: nginx:alpine
+    container_name: my-nginx
+    ports:
+      - 8888:80
+    

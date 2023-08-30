@@ -1,0 +1,96 @@
+///////////////////////// CLASE 25
+2. Pasamos de los comandos de los contenedores kong-database, kong, konga a docker-compose
+docker network create kong-net
+docker run -d --name kong-database --network kong-net -e "POSTGRES_USER=kong" -e "POSTGRES_DB=kong" -e "POSTGRES_PASSWORD=kong" -p 5555:5432 postgres:10.5
+docker run --rm --network kong-net -e "KONG_DATABASE=postgres" -e "KONG_PG_HOST=kong-database" -e "KONG_PG_PASSWORD=kong" kong:latest kong migrations bootstrap
+docker run -d --name kong --network kong-net -e "KONG_DATABASE=postgres" -e "KONG_PG_HOST=kong-database" -e "KONG_PG_PASSWORD=kong" -e "KONG_PROXY_ACCESS_LOG=/dev/stdout" -e "KONG_ADMIN_ACCESS_LOG=/dev/stdout" -e "KONG_PROXY_ERROR_LOG=/dev/stderr" -e "KONG_ADMIN_ERROR_LOG=/dev/stderr" -e "KONG_ADMIN_LISTEN=0.0.0.0:8001, 0.0.0.0:8444 ssl" -p 8000:8000 -p 8443:8443 -p 8001:8001 -p 8444:8444 kong:latest
+docker run --rm --network kong-net pantsel/konga -c prepare -a postgres -u postgresql://kong:kong@kong-database:5432/konga_db
+docker run -d -p 1337:1337 --network kong-net -e "DB_ADAPTER=postgres" -e "DB_HOST=kong-database" -e "DB_USER=kong" -e "DB_PASSWORD=kong" -e "DB_DATABASE=konga_db" -e "KONGA_HOOK_TIMEOUT=120000" -e "NODE_ENV=production" --name konga pantsel/konga
+
+-- redes con docker-compose
+docker network create kong-net
+
+-- para inspeccionar si esta usando la red que creamos
+docker inspect kong-net
+
+-- fuerza a recrear las imagenes de los container
+docker-compose up --force-recreate -d
+
+--
+docker-compose -f ./docker-compose.yaml up -d 
+
+-- ver puertos ocupados
+netstat -ntpl
+-- VERIFICAR el FIREWALL, en mi caso no necesito verificar
+sudo systemctl status firewalld
+
+
+version: "3.8"
+services:
+  kong-database:
+    image: postgres:10.5
+    container_name: kong-database
+    ports:
+      - 5555:5432
+    environment:
+      POSTGRES_USER: kong
+      POSTGRES_DB: kong
+      KONG_PG_HOST: kong-database
+      POSTGRES_PASSWORD: kong
+    networks:
+      - kong-net
+  kong-prepare:
+    image: kong:latest
+    container_name: kong-prepare
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_PASSWORD: kong
+    command: "kong migrations bootstrap"
+    networks:
+      - kong-net
+  kong:
+    image: kong:latest
+    container_name: kong
+    environment:
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: kong-database
+      KONG_PG_PASSWORD: kong
+      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+      KONG_PROXY_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001, 0.0.0.0:8444 ssl"
+    ports:
+      - 8000:8000
+      - 8443:8443
+      - 8001:8001
+      - 8444:8444
+    networks:
+      - kong-net
+  konga-prepare:
+    container_name: konga-prepare
+    image: pantsel/konga
+    command: "-c prepare -a postgres -u postgresql://kong:kong@kong-database:5432/konga_db"
+    networks:
+      - kong-net
+  konga:
+    container_name: konga
+    image: pantsel/konga
+    environment:
+      DB_ADAPTER: postgres
+      DB_HOST: kong-database
+      DB_USER: kong
+      DB_PASSWORD: kong
+      DB_DATABASE: konga_db
+      KONGA_HOOK_TIMEOUT: 120000
+      NODE_ENV: production
+    ports:
+      - 1337:1337
+    networks:
+      - kong-net
+networks:
+  kong-net:
+    external: true
+
+
